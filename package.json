@@ -1,0 +1,38 @@
+{
+  "name": "energy-dashboard-app",
+  "version": "1.0.0",
+  "description": "Desktop-App für AlphaESS und Zappi Dashboards",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac",
+    "build:dmg": "electron-builder --mac dmg"
+  },
+  "author": "hachmerb-ui",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.hachmerb.energy-dashboard",
+    "productName": "Energy Dashboard",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": ["dmg", "zip"],
+      "icon": "assets/icon.icns"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "assets/**"
+    ],
+    "extraResources": [
+      {
+        "from": "docker",
+        "to": "docker"
+      }
+    ]
+  }
+}
