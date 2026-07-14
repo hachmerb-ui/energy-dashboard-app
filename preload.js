@@ -1,9 +1,10 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("api", {
-  checkDocker: () => ipcRenderer.invoke("check-docker"),
+  checkPrerequisites: () => ipcRenderer.invoke("check-prerequisites"),
   startProject: (project) => ipcRenderer.invoke("start-project", project),
   stopProject: (project) => ipcRenderer.invoke("stop-project", project),
   openDashboard: (url) => ipcRenderer.invoke("open-dashboard", url),
   getStatus: () => ipcRenderer.invoke("get-status"),
+  installDeps: (project) => ipcRenderer.invoke("install-deps", project),
 });

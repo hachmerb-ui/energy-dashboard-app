@@ -1,7 +1,7 @@
 {
   "name": "energy-dashboard-app",
-  "version": "1.0.0",
-  "description": "Desktop-App für AlphaESS und Zappi Dashboards",
+  "version": "2.0.0",
+  "description": "Desktop-App für AlphaESS und Zappi Dashboards (ohne Docker)",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -27,12 +27,6 @@
       "preload.js",
       "renderer/**",
       "assets/**"
-    ],
-    "extraResources": [
-      {
-        "from": "docker",
-        "to": "docker"
-      }
     ]
   }
 }

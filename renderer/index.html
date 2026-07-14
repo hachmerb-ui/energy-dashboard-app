@@ -16,6 +16,208 @@
       -webkit-app-region: drag;
     }
 
+    h1 { font-size: 28px; margin-bottom: 8px; }
+    .subtitle { color: #8892b0; margin-bottom: 30px; font-size: 14px; }
+
+    .prereq-status {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 20px; font-size: 12px; margin-bottom: 30px;
+    }
+    .prereq-status.ok { background: rgba(80,200,120,0.15); color: #50c878; }
+    .prereq-status.error { background: rgba(255,99,71,0.15); color: #ff6347; }
+    .prereq-status.checking { background: rgba(255,255,255,0.1); color: #8892b0; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+    .projects { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; -webkit-app-region: no-drag; }
+
+    .card {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px; padding: 28px; transition: transform 0.2s, border-color 0.2s;
+    }
+    .card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.2); }
+    .card h2 { font-size: 20px; margin-bottom: 8px; }
+    .card p { color: #8892b0; font-size: 13px; margin-bottom: 20px; line-height: 1.5; }
+
+    .card-status {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; margin-bottom: 16px; padding: 4px 10px; border-radius: 12px;
+    }
+    .card-status.running { background: rgba(80,200,120,0.15); color: #50c878; }
+    .card-status.stopped { background: rgba(255,165,0,0.15); color: #ffa500; }
+
+    .buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    button {
+      padding: 10px 18px; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 500; cursor: pointer; transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-start { background: #50c878; color: #000; }
+    .btn-stop { background: #ff6347; color: #fff; }
+    .btn-open { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
+    .btn-install { background: #4a90d9; color: #fff; }
+
+    .loading {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      margin-right: 6px; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .help-box {
+      margin-top: 30px; padding: 16px 20px;
+      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px; font-size: 12px; color: #8892b0; line-height: 1.6;
+      -webkit-app-region: no-drag;
+    }
+    .help-box code { background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>⚡ Energy Dashboard</h1>
+  <p class="subtitle">Deine Energie-Projekte mit einem Klick starten – ohne Docker</p>
+
+  <div id="prereq-status" class="prereq-status checking">
+    <span class="dot"></span>
+    <span>Voraussetzungen werden geprüft...</span>
+  </div>
+
+  <div class="projects">
+    <div class="card" id="card-alphaess">
+      <h2>☀️ AlphaESS Dashboard</h2>
+      <p>Photovoltaik-Monitoring mit Batterie, Verbrauch und Einspeise-Daten. Inkl. Monatsabrechnung.</p>
+      <div class="card-status stopped" id="status-alphaess">
+        <span class="dot"></span> Gestoppt
+      </div>
+      <div class="buttons">
+        <button class="btn-install" onclick="installDeps('alphaess')">📦 Installieren</button>
+        <button class="btn-start" onclick="startProject('alphaess')">▶ Starten</button>
+        <button class="btn-stop" onclick="stopProject('alphaess')" disabled>■ Stoppen</button>
+        <button class="btn-open" onclick="openDashboard('http://localhost:5173')" disabled id="open-alphaess">🌐 Öffnen</button>
+      </div>
+    </div>
+
+    <div class="card" id="card-zappi">
+      <h2>🔌 Zappi Dashboard</h2>
+      <p>Wallbox-Monitoring mit Ladedaten und monatlicher Rechnungsberechnung für myenergi Zappi.</p>
+      <div class="card-status stopped" id="status-zappi-dashboard">
+        <span class="dot"></span> Gestoppt
+      </div>
+      <div class="buttons">
+        <button class="btn-install" onclick="installDeps('zappi-dashboard')">📦 Installieren</button>
+        <button class="btn-start" onclick="startProject('zappi-dashboard')">▶ Starten</button>
+        <button class="btn-stop" onclick="stopProject('zappi-dashboard')" disabled>■ Stoppen</button>
+        <button class="btn-open" onclick="openDashboard('http://localhost:5174')" disabled id="open-zappi-dashboard">🌐 Öffnen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="help-box">
+    <strong>Erster Start?</strong> Klicke zuerst auf "📦 Installieren" bei jedem Projekt (einmalig).<br>
+    Voraussetzungen: <code>brew install node</code> · <code>npm install -g pnpm</code> · <code>curl -LsSf https://astral.sh/uv/install.sh | sh</code>
+  </div>
+
+  <script>
+    async function init() {
+      const prereqs = await window.api.checkPrerequisites();
+      const el = document.getElementById("prereq-status");
+      if (prereqs.allOk) {
+        el.className = "prereq-status ok";
+        el.innerHTML = '<span class="dot"></span> Alles bereit (uv ✓ · Node ✓ · pnpm ✓)';
+      } else {
+        const missing = [];
+        if (!prereqs.uv) missing.push("uv");
+        if (!prereqs.node) missing.push("node");
+        if (!prereqs.pnpm) missing.push("pnpm");
+        el.className = "prereq-status error";
+        el.innerHTML = `<span class="dot"></span> Fehlend: ${missing.join(", ")} – siehe Hilfe unten`;
+      }
+      refreshStatus();
+    }
+
+    async function refreshStatus() {
+      const status = await window.api.getStatus();
+      for (const [project, state] of Object.entries(status)) {
+        updateUI(project, state === "running");
+      }
+    }
+
+    function updateUI(project, running) {
+      const statusEl = document.getElementById(`status-${project}`);
+      const card = project === "alphaess" ? document.getElementById("card-alphaess") : document.getElementById("card-zappi");
+      const buttons = card.querySelectorAll("button");
+      const openBtn = document.getElementById(`open-${project}`);
+
+      if (running) {
+        statusEl.className = "card-status running";
+        statusEl.innerHTML = '<span class="dot"></span> Läuft';
+        buttons[0].disabled = true;  // install
+        buttons[1].disabled = true;  // start
+        buttons[2].disabled = false; // stop
+        openBtn.disabled = false;
+      } else {
+        statusEl.className = "card-status stopped";
+        statusEl.innerHTML = '<span class="dot"></span> Gestoppt';
+        buttons[0].disabled = false; // install
+        buttons[1].disabled = false; // start
+        buttons[2].disabled = true;  // stop
+        openBtn.disabled = true;
+      }
+    }
+
+    async function installDeps(project) {
+      const statusEl = document.getElementById(`status-${project}`);
+      statusEl.innerHTML = '<span class="loading"></span> Installiere Abhängigkeiten...';
+      const result = await window.api.installDeps(project);
+      if (result.success) {
+        statusEl.className = "card-status stopped";
+        statusEl.innerHTML = '<span class="dot"></span> Installiert ✓ – bereit zum Starten';
+      } else {
+        statusEl.innerHTML = '<span class="dot"></span> Fehler bei Installation';
+        statusEl.className = "card-status stopped";
+        console.error(result.output);
+      }
+    }
+
+    async function startProject(project) {
+      const statusEl = document.getElementById(`status-${project}`);
+      statusEl.innerHTML = '<span class="loading"></span> Wird gestartet...';
+      const result = await window.api.startProject(project);
+      if (result.success) {
+        updateUI(project, true);
+      } else {
+        statusEl.innerHTML = '<span class="dot"></span> Fehler beim Starten';
+        statusEl.className = "card-status stopped";
+        console.error(result.output);
+      }
+    }
+
+    async function stopProject(project) {
+      const statusEl = document.getElementById(`status-${project}`);
+      statusEl.innerHTML = '<span class="loading"></span> Wird gestoppt...';
+      await window.api.stopProject(project);
+      updateUI(project, false);
+    }
+
+    function openDashboard(url) {
+      window.api.openDashboard(url);
+    }
+
+    init();
+    setInterval(refreshStatus, 5000);
+  </script>
+</body>
+</html>
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 40px;
+      -webkit-app-region: drag;
+    }
+
     h1 {
       font-size: 28px;
       margin-bottom: 8px;
