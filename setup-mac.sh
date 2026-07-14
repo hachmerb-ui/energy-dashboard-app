@@ -38,7 +38,13 @@ fi
 # pnpm
 if ! command -v pnpm &> /dev/null; then
   echo "📦 Installiere pnpm..."
-  npm install -g pnpm
+  # Try corepack first (no sudo needed), fallback to sudo npm
+  if command -v corepack &> /dev/null; then
+    corepack enable
+    corepack prepare pnpm@latest --activate
+  else
+    sudo npm install -g pnpm
+  fi
 fi
 
 # Python
