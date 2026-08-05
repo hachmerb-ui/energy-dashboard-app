@@ -258,6 +258,10 @@ ipcMain.handle("get-status", async () => {
   return results;
 });
 
+// pnpm 11 beendet sich mit Fehlercode, wenn Pakete Build-Skripte mitbringen
+// (ERR_PNPM_IGNORED_BUILDS). Fuer diese Projekte ist das unkritisch.
+const PNPM_INSTALL_ARGS = ["install", "--config.strictDepBuilds=false"];
+
 ipcMain.handle("install-deps", async (event, project) => {
   const projectPath = getProjectPath(project);
   const env = { ...process.env, PATH: getExtendedPath() };
@@ -266,8 +270,8 @@ ipcMain.handle("install-deps", async (event, project) => {
     const steps = [];
     if (project === "alphaess") {
       steps.push({ cmd: "uv", args: ["sync"], cwd: path.join(projectPath, "backend") });
-      steps.push({ cmd: "pnpm", args: ["install"], cwd: path.join(projectPath, "bff") });
-      steps.push({ cmd: "pnpm", args: ["install"], cwd: path.join(projectPath, "frontend") });
+      steps.push({ cmd: "pnpm", args: PNPM_INSTALL_ARGS, cwd: path.join(projectPath, "bff") });
+      steps.push({ cmd: "pnpm", args: PNPM_INSTALL_ARGS, cwd: path.join(projectPath, "frontend") });
     } else if (project === "zappi-dashboard") {
       steps.push({ cmd: "uv", args: ["sync"], cwd: path.join(projectPath, "backend") });
       steps.push({ cmd: "npm", args: ["install"], cwd: path.join(projectPath, "frontend") });
