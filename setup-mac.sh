@@ -5,6 +5,10 @@
 # ============================================================
 set -e
 
+# Homebrew nicht bei jedem Aufruf aktualisieren (spart mehrere Minuten)
+export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_ENV_HINTS=1
+
 echo "⚡ Energy Dashboard – macOS Setup"
 echo "=================================="
 echo ""
@@ -12,13 +16,10 @@ echo ""
 # 1. Prüfe/installiere Voraussetzungen
 echo "🔍 Prüfe Voraussetzungen..."
 
-# Homebrew
-if ! command -v brew &> /dev/null; then
-  echo "📦 Installiere Homebrew..."
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-fi
-
-# Homebrew in die PATH laden – /opt/homebrew = Apple Silicon, /usr/local = Intel (iMac 2019)
+# Homebrew nur in die PATH laden, falls vorhanden.
+# /opt/homebrew = Apple Silicon, /usr/local = Intel (iMac 2019)
+# Homebrew ist NICHT zwingend – auf aelterem macOS uebersetzt es Pakete
+# stundenlang aus dem Quellcode, deshalb wird es hier moeglichst gemieden.
 for BREW_BIN in /opt/homebrew/bin/brew /usr/local/bin/brew; do
   if [ -x "$BREW_BIN" ]; then
     eval "$("$BREW_BIN" shellenv)"
@@ -29,26 +30,34 @@ for BREW_BIN in /opt/homebrew/bin/brew /usr/local/bin/brew; do
   fi
 done
 
-if ! command -v brew &> /dev/null; then
-  echo "❌ Homebrew wurde nicht gefunden. Bitte Terminal neu öffnen und Script erneut starten."
+export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$PATH"
+
+# Git – auf macOS Teil der Xcode Command Line Tools
+if ! command -v git &> /dev/null; then
+  echo "📦 Installiere Git (Command Line Tools)..."
+  xcode-select --install
+  echo "Bitte die Installation im Fenster bestaetigen und das Script danach erneut starten."
   exit 1
 fi
 
-# Git
-if ! command -v git &> /dev/null; then
-  echo "📦 Installiere Git..."
-  brew install git
-fi
-
-# Node.js
+# Node.js – fertiges Paket von nodejs.org, kein Quellcode-Build
 if ! command -v node &> /dev/null; then
   echo "📦 Installiere Node.js..."
-  brew install node
+  NODE_VERSION="v22.14.0"
+  case "$(uname -m)" in
+    arm64) NODE_ARCH="darwin-arm64" ;;
+    *)     NODE_ARCH="darwin-x64" ;;
+  esac
+  mkdir -p "$HOME/.local/node"
+  curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-${NODE_ARCH}.tar.gz" \
+    | tar -xz -C "$HOME/.local/node" --strip-components=1
+  if ! grep -q '.local/node/bin' ~/.zprofile 2>/dev/null; then
+    echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.zprofile
+  fi
 fi
 
-# pnpm – NICHT ueber Homebrew: auf aelteren macOS-Versionen gibt es keine
-# fertigen Pakete mehr, dann werden node und cmake stundenlang aus dem
-# Quellcode uebersetzt. corepack liegt Node bereits bei.
+# pnpm – NICHT ueber Homebrew: das wuerde node und cmake aus dem Quellcode
+# uebersetzen. corepack liegt Node bereits bei.
 if ! command -v pnpm &> /dev/null; then
   echo "📦 Installiere pnpm..."
   if command -v corepack &> /dev/null; then
