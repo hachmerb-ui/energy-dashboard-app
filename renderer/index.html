@@ -139,7 +139,8 @@
         <button class="btn-settings" onclick="openSettings('zappi-dashboard')">⚙️ Zugangsdaten</button>
         <button class="btn-start" onclick="startProject('zappi-dashboard')">▶ Starten</button>
         <button class="btn-stop" onclick="stopProject('zappi-dashboard')" disabled>■ Stoppen</button>
-        <button class="btn-open" onclick="openDashboard('http://localhost:5174')" disabled id="open-zappi-dashboard">🌐 Öffnen</button>
+        <!-- 127.0.0.1 statt localhost: das Zappi-Backend erlaubt per CORS nur diese Adresse -->
+        <button class="btn-open" onclick="openDashboard('http://127.0.0.1:5174')" disabled id="open-zappi-dashboard">🌐 Öffnen</button>
       </div>
     </div>
   </div>
