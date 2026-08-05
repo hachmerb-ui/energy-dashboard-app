@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const { spawn, execSync } = require("child_process");
 
 let mainWindow;
@@ -246,6 +247,53 @@ ipcMain.handle("save-settings", async (event, project, values) => {
   } catch (err) {
     return { success: false, output: err.message };
   }
+});
+
+// ─── Zugangsdaten testen ─────────────────────────────────────
+
+// AlphaESS signiert jede Anfrage mit sha512(appId + appSecret + Zeitstempel).
+ipcMain.handle("test-alpha-credentials", async (event, appId, appSecret) => {
+  const id = String(appId || "").trim();
+  const secret = String(appSecret || "").trim();
+  if (!id || !secret) {
+    return { success: false, output: "Bitte App-ID und App-Secret eintragen." };
+  }
+
+  const timeStamp = String(Math.floor(Date.now() / 1000));
+  const sign = crypto.createHash("sha512").update(`${id}${secret}${timeStamp}`).digest("hex");
+
+  let body;
+  try {
+    const response = await fetch("https://openapi.alphaess.com/api/getEssList", {
+      headers: { appId: id, timeStamp, sign },
+      signal: AbortSignal.timeout(15000),
+    });
+    body = await response.json();
+  } catch (err) {
+    return { success: false, output: `Keine Verbindung zu AlphaESS: ${err.message}` };
+  }
+
+  const code = body?.code;
+  if (code === 6007 || code === 6053) {
+    return {
+      success: false,
+      output: "AlphaESS lehnt die Zugangsdaten ab. App-ID und Secret nochmals aus dem Portal kopieren – ein zurückgesetztes Secret macht das alte ungültig.",
+    };
+  }
+  if (code !== 200) {
+    return { success: false, output: `AlphaESS meldet Fehler ${code}: ${body?.msg ?? "unbekannt"}` };
+  }
+
+  const systems = Array.isArray(body.data) ? body.data : [];
+  if (systems.length === 0) {
+    return {
+      success: false,
+      output: "Zugangsdaten sind gültig, aber es ist keine Anlage verknüpft. Im AlphaESS-Portal muss die Anlage mit Seriennummer und CheckCode hinzugefügt werden.",
+    };
+  }
+
+  const names = systems.map((s) => s.sysSn || s.sn).filter(Boolean).join(", ");
+  return { success: true, output: `Verbindung OK – ${systems.length} Anlage(n): ${names}` };
 });
 
 ipcMain.handle("get-status", async () => {

@@ -9,4 +9,6 @@ contextBridge.exposeInMainWorld("api", {
   installDeps: (project) => ipcRenderer.invoke("install-deps", project),
   getSettings: (project) => ipcRenderer.invoke("get-settings", project),
   saveSettings: (project, values) => ipcRenderer.invoke("save-settings", project, values),
+  testAlphaCredentials: (appId, appSecret) =>
+    ipcRenderer.invoke("test-alpha-credentials", appId, appSecret),
 });

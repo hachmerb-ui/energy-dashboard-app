@@ -158,6 +158,7 @@
       <div id="settings-fields"></div>
       <div class="modal-msg" id="settings-msg"></div>
       <div class="modal-actions">
+        <button class="btn-install" id="settings-test" onclick="testSettings()">🔌 Verbindung testen</button>
         <button class="btn-open" onclick="closeSettings()">Abbrechen</button>
         <button class="btn-start" onclick="saveSettings()">Speichern</button>
       </div>
@@ -322,7 +323,29 @@
         container.append(wrapper);
       }
 
+      document.getElementById("settings-test").style.display =
+        project === "alphaess" ? "" : "none";
       document.getElementById("settings-modal").classList.add("open");
+    }
+
+    // Prueft die eingegebenen Zugangsdaten direkt bei AlphaESS, ohne dass das
+    // Dashboard dafuer laufen muss.
+    async function testSettings() {
+      const button = document.getElementById("settings-test");
+      const msg = document.getElementById("settings-msg");
+      msg.className = "modal-msg";
+      msg.textContent = "Teste Verbindung …";
+      button.disabled = true;
+      try {
+        const result = await window.api.testAlphaCredentials(
+          document.getElementById("settings-ALPHA_APPID").value.trim(),
+          document.getElementById("settings-ALPHA_APPSECRET").value.trim(),
+        );
+        msg.className = result.success ? "modal-msg ok" : "modal-msg err";
+        msg.textContent = result.output;
+      } finally {
+        button.disabled = false;
+      }
     }
 
     function closeSettings() {
