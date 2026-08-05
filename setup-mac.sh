@@ -113,8 +113,9 @@ fi
 if [ ! -d "energy-dashboard-app" ]; then
   git clone https://github.com/hachmerb-ui/energy-dashboard-app.git
 else
-  echo "   energy-dashboard-app bereits vorhanden, aktualisiere..."
-  cd energy-dashboard-app && git pull && cd ..
+  # Kein git pull: dieses Script liegt selbst in dem Ordner. Waehrend es
+  # laeuft, wuerde bash eine geaenderte Datei weiterlesen und abstuerzen.
+  echo "   energy-dashboard-app bereits vorhanden."
 fi
 
 echo ""
@@ -122,14 +123,24 @@ echo ""
 # 3. Installiere Projekt-Abhängigkeiten
 echo "📦 Installiere Abhängigkeiten..."
 
+# pnpm 11 bricht ab, wenn Pakete ungenutzte Build-Skripte mitbringen
+# (ERR_PNPM_IGNORED_BUILDS). Fuer unsere Zwecke ist das unkritisch.
+export PNPM_CONFIG_STRICT_DEP_BUILDS=false
+
+pnpm_install() {
+  pnpm install --config.strictDepBuilds=false \
+    || pnpm install \
+    || { echo "❌ pnpm install fehlgeschlagen in $(pwd)"; exit 1; }
+}
+
 echo "   → alphaess/backend..."
 cd "$PROJECTS_DIR/alphaess/backend" && uv sync
 
 echo "   → alphaess/bff..."
-cd "$PROJECTS_DIR/alphaess/bff" && pnpm install
+cd "$PROJECTS_DIR/alphaess/bff" && pnpm_install
 
 echo "   → alphaess/frontend..."
-cd "$PROJECTS_DIR/alphaess/frontend" && pnpm install
+cd "$PROJECTS_DIR/alphaess/frontend" && pnpm_install
 
 echo "   → zappi-dashboard/backend..."
 cd "$PROJECTS_DIR/zappi-dashboard/backend" && uv sync
