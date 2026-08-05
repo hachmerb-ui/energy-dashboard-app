@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --mac",
+    "build": "electron-builder --mac dir",
     "build:dmg": "electron-builder --mac dmg"
   },
   "author": "hachmerb-ui",
@@ -20,7 +20,7 @@
     "mac": {
       "category": "public.app-category.utilities",
       "target": ["dmg", "zip"],
-      "icon": "assets/icon.icns"
+      "identity": null
     },
     "files": [
       "main.js",

@@ -1,16 +1,28 @@
 const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const { spawn, execSync } = require("child_process");
 
 let mainWindow;
 const processes = {}; // { projectName: [childProcess, ...] }
 
 function getProjectPath(project) {
-  const isDev = !app.isPackaged;
-  if (isDev) {
-    return path.join(__dirname, "..", project);
-  }
-  return path.join(app.getPath("home"), "Projects", "energy", project);
+  const home = app.getPath("home");
+  const candidates = [
+    // Manueller Override, z. B. ENERGY_PROJECTS_DIR=/Users/berndhachmer/Projects
+    process.env.ENERGY_PROJECTS_DIR && path.join(process.env.ENERGY_PROJECTS_DIR, project),
+    // Dev-Modus: Geschwisterordner der App
+    !app.isPackaged && path.join(__dirname, "..", project),
+    path.join(home, "Projects", "energy", project),
+    path.join(home, "Projects", project),
+    path.join(home, "Documents", "Projects", project),
+  ].filter(Boolean);
+
+  const found = candidates.find((dir) => fs.existsSync(dir));
+  if (found) return found;
+
+  console.error(`[${project}] Projektordner nicht gefunden. Gesucht in:\n  ${candidates.join("\n  ")}`);
+  return candidates[candidates.length - 1];
 }
 
 function findExecutable(name) {
@@ -24,9 +36,12 @@ function findExecutable(name) {
 function getExtendedPath() {
   const home = app.getPath("home");
   const additions = [
+    // Homebrew auf Apple Silicon
     "/opt/homebrew/bin",
     "/opt/homebrew/sbin",
+    // Homebrew auf Intel-Macs (z. B. iMac 2019)
     "/usr/local/bin",
+    "/usr/local/sbin",
     `${home}/.local/bin`,
     `${home}/.cargo/bin`,
     `${home}/Library/pnpm`,
@@ -36,11 +51,22 @@ function getExtendedPath() {
     "/sbin",
   ];
   const currentPath = process.env.PATH || "";
-  return [...additions, ...currentPath.split(":")].join(":");
+  const merged = [...additions, ...currentPath.split(":")].filter(Boolean);
+  return [...new Set(merged)].join(":");
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Beendet die komplette Prozessgruppe (Shell + uvicorn/vite/tsx-Kinder).
+function killProcessTree(proc, signal) {
+  if (!proc || proc.pid == null) return;
+  try {
+    process.kill(-proc.pid, signal);
+  } catch {
+    try { proc.kill(signal); } catch { /* bereits beendet */ }
+  }
 }
 
 function createWindow() {
@@ -77,6 +103,9 @@ ipcMain.handle("start-project", async (event, project) => {
   }
 
   const projectPath = getProjectPath(project);
+  if (!fs.existsSync(projectPath)) {
+    return { success: false, output: `Projektordner nicht gefunden: ${projectPath}` };
+  }
   const env = { ...process.env, PATH: getExtendedPath() };
   const procs = [];
 
@@ -86,6 +115,7 @@ ipcMain.handle("start-project", async (event, project) => {
         cwd: path.join(projectPath, "backend"),
         env,
         shell: true,
+        detached: true,
       });
       procs.push(backend);
       await sleep(3000);
@@ -95,6 +125,7 @@ ipcMain.handle("start-project", async (event, project) => {
         cwd: path.join(projectPath, "bff"),
         env: bffEnv,
         shell: true,
+        detached: true,
       });
       procs.push(bff);
       await sleep(2000);
@@ -103,6 +134,7 @@ ipcMain.handle("start-project", async (event, project) => {
         cwd: path.join(projectPath, "frontend"),
         env,
         shell: true,
+        detached: true,
       });
       procs.push(frontend);
 
@@ -111,6 +143,7 @@ ipcMain.handle("start-project", async (event, project) => {
         cwd: path.join(projectPath, "backend"),
         env,
         shell: true,
+        detached: true,
       });
       procs.push(backend);
       await sleep(3000);
@@ -119,12 +152,15 @@ ipcMain.handle("start-project", async (event, project) => {
         cwd: path.join(projectPath, "frontend"),
         env,
         shell: true,
+        detached: true,
       });
       procs.push(frontend);
     }
 
     procs.forEach((proc) => {
-      proc.on("error", (err) => console.error(`Process error: ${err.message}`));
+      proc.on("error", (err) => console.error(`[${project}] Process error: ${err.message}`));
+      proc.stdout?.on("data", (d) => console.log(`[${project}] ${d.toString().trimEnd()}`));
+      proc.stderr?.on("data", (d) => console.error(`[${project}] ${d.toString().trimEnd()}`));
     });
 
     processes[project] = procs;
@@ -138,19 +174,78 @@ ipcMain.handle("stop-project", async (event, project) => {
   const procs = processes[project];
   if (!procs || procs.length === 0) return { success: true };
 
-  for (const proc of procs) {
-    try {
-      process.kill(-proc.pid, "SIGTERM");
-    } catch {
-      try { proc.kill("SIGTERM"); } catch { /* already dead */ }
-    }
-  }
+  procs.forEach((proc) => killProcessTree(proc, "SIGTERM"));
+  await sleep(2000);
+  procs.forEach((proc) => {
+    if (proc.exitCode === null && !proc.killed) killProcessTree(proc, "SIGKILL");
+  });
+
   processes[project] = [];
   return { success: true };
 });
 
 ipcMain.handle("open-dashboard", async (event, url) => {
   shell.openExternal(url);
+});
+
+// ─── Einstellungen (.env-Dateien) ────────────────────────────
+
+const ENV_TARGETS = {
+  alphaess: ["backend", ".env"],
+  "zappi-dashboard": ["backend", ".env"],
+};
+
+function readEnvFile(project) {
+  const target = ENV_TARGETS[project];
+  if (!target) return {};
+  const file = path.join(getProjectPath(project), ...target);
+  if (!fs.existsSync(file)) return {};
+
+  const values = {};
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    values[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
+  }
+  return values;
+}
+
+function writeEnvFile(project, values) {
+  const target = ENV_TARGETS[project];
+  if (!target) throw new Error(`Unbekanntes Projekt: ${project}`);
+
+  const dir = path.join(getProjectPath(project), target[0]);
+  if (!fs.existsSync(dir)) throw new Error(`Ordner nicht gefunden: ${dir}`);
+
+  const file = path.join(dir, target[1]);
+  const body = Object.entries(values)
+    .filter(([key]) => /^[A-Z0-9_]+$/.test(key))
+    .map(([key, value]) => `${key}=${String(value ?? "").replace(/[\r\n]/g, "")}`)
+    .join("\n");
+
+  // 0600: nur der angemeldete Benutzer darf die Zugangsdaten lesen
+  fs.writeFileSync(file, `${body}\n`, { encoding: "utf8", mode: 0o600 });
+  try { fs.chmodSync(file, 0o600); } catch { /* Dateisystem ohne POSIX-Rechte */ }
+  return file;
+}
+
+ipcMain.handle("get-settings", async (event, project) => {
+  try {
+    return { success: true, values: readEnvFile(project) };
+  } catch (err) {
+    return { success: false, output: err.message, values: {} };
+  }
+});
+
+ipcMain.handle("save-settings", async (event, project, values) => {
+  try {
+    const file = writeEnvFile(project, values);
+    return { success: true, output: `Gespeichert: ${file}` };
+  } catch (err) {
+    return { success: false, output: err.message };
+  }
 });
 
 ipcMain.handle("get-status", async () => {
@@ -200,9 +295,7 @@ app.whenReady().then(createWindow);
 app.on("window-all-closed", () => {
   for (const project of Object.keys(processes)) {
     for (const proc of (processes[project] || [])) {
-      try { process.kill(-proc.pid, "SIGTERM"); } catch {
-        try { proc.kill("SIGTERM"); } catch { /* ignore */ }
-      }
+      killProcessTree(proc, "SIGTERM");
     }
   }
   app.quit();

@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld("api", {
   openDashboard: (url) => ipcRenderer.invoke("open-dashboard", url),
   getStatus: () => ipcRenderer.invoke("get-status"),
   installDeps: (project) => ipcRenderer.invoke("install-deps", project),
+  getSettings: (project) => ipcRenderer.invoke("get-settings", project),
+  saveSettings: (project, values) => ipcRenderer.invoke("save-settings", project, values),
 });

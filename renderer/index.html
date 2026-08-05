@@ -57,6 +57,34 @@
     .btn-stop { background: #ff6347; color: #fff; }
     .btn-open { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
     .btn-install { background: #4a90d9; color: #fff; }
+    .btn-settings { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
+
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center; -webkit-app-region: no-drag;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: #16213e; border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 16px; padding: 28px; width: 460px; max-height: 84vh; overflow-y: auto;
+    }
+    .modal h3 { font-size: 18px; margin-bottom: 6px; }
+    .modal .hint { color: #8892b0; font-size: 12px; margin-bottom: 20px; line-height: 1.5; }
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 12px; color: #8892b0; margin-bottom: 6px; }
+    .field input[type="text"], .field input[type="password"] {
+      width: 100%; padding: 10px 12px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.25);
+      color: #fff; font-size: 13px;
+    }
+    .field input:focus { outline: none; border-color: #4a90d9; }
+    .toggle { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; font-size: 13px; }
+    .toggle input { width: 16px; height: 16px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+    .modal-msg { font-size: 12px; margin-top: 14px; min-height: 16px; }
+    .modal-msg.ok { color: #50c878; }
+    .modal-msg.err { color: #ff6347; }
 
     .loading {
       display: inline-block; width: 14px; height: 14px;
@@ -93,6 +121,7 @@
       </div>
       <div class="buttons">
         <button class="btn-install" onclick="installDeps('alphaess')">📦 Installieren</button>
+        <button class="btn-settings" onclick="openSettings('alphaess')">⚙️ Zugangsdaten</button>
         <button class="btn-start" onclick="startProject('alphaess')">▶ Starten</button>
         <button class="btn-stop" onclick="stopProject('alphaess')" disabled>■ Stoppen</button>
         <button class="btn-open" onclick="openDashboard('http://localhost:5173')" disabled id="open-alphaess">🌐 Öffnen</button>
@@ -107,6 +136,7 @@
       </div>
       <div class="buttons">
         <button class="btn-install" onclick="installDeps('zappi-dashboard')">📦 Installieren</button>
+        <button class="btn-settings" onclick="openSettings('zappi-dashboard')">⚙️ Zugangsdaten</button>
         <button class="btn-start" onclick="startProject('zappi-dashboard')">▶ Starten</button>
         <button class="btn-stop" onclick="stopProject('zappi-dashboard')" disabled>■ Stoppen</button>
         <button class="btn-open" onclick="openDashboard('http://localhost:5174')" disabled id="open-zappi-dashboard">🌐 Öffnen</button>
@@ -116,7 +146,21 @@
 
   <div class="help-box">
     <strong>Erster Start?</strong> Klicke zuerst auf "📦 Installieren" bei jedem Projekt (einmalig).<br>
-    Voraussetzungen: <code>brew install node</code> · <code>npm install -g pnpm</code> · <code>curl -LsSf https://astral.sh/uv/install.sh | sh</code>
+    Unter "⚙️ Zugangsdaten" trägst du deine echten Logins ein – ohne Eintrag laufen die Dashboards mit Beispieldaten.
+  </div>
+
+  <!-- Einstellungs-Dialog -->
+  <div class="modal-backdrop" id="settings-modal">
+    <div class="modal">
+      <h3 id="settings-title">Zugangsdaten</h3>
+      <p class="hint" id="settings-hint"></p>
+      <div id="settings-fields"></div>
+      <div class="modal-msg" id="settings-msg"></div>
+      <div class="modal-actions">
+        <button class="btn-open" onclick="closeSettings()">Abbrechen</button>
+        <button class="btn-start" onclick="saveSettings()">Speichern</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -147,23 +191,20 @@
     function updateUI(project, running) {
       const statusEl = document.getElementById(`status-${project}`);
       const card = project === "alphaess" ? document.getElementById("card-alphaess") : document.getElementById("card-zappi");
-      const buttons = card.querySelectorAll("button");
       const openBtn = document.getElementById(`open-${project}`);
+
+      card.querySelector(".btn-install").disabled = running;
+      card.querySelector(".btn-settings").disabled = running;
+      card.querySelector(".btn-start").disabled = running;
+      card.querySelector(".btn-stop").disabled = !running;
+      openBtn.disabled = !running;
 
       if (running) {
         statusEl.className = "card-status running";
         statusEl.innerHTML = '<span class="dot"></span> Läuft';
-        buttons[0].disabled = true;  // install
-        buttons[1].disabled = true;  // start
-        buttons[2].disabled = false; // stop
-        openBtn.disabled = false;
       } else {
         statusEl.className = "card-status stopped";
         statusEl.innerHTML = '<span class="dot"></span> Gestoppt';
-        buttons[0].disabled = false; // install
-        buttons[1].disabled = false; // start
-        buttons[2].disabled = true;  // stop
-        openBtn.disabled = true;
       }
     }
 
@@ -205,240 +246,119 @@
       window.api.openDashboard(url);
     }
 
+    // ─── Zugangsdaten-Dialog ──────────────────────────────────
+
+    const SETTINGS_SCHEMA = {
+      alphaess: {
+        title: "☀️ AlphaESS – Zugangsdaten",
+        hint: "Die App-ID und das Secret bekommst du im AlphaESS-Entwicklerportal. Solange der Demo-Modus aktiv ist, werden Beispieldaten angezeigt.",
+        demoKey: "DEMO_MODE",
+        demoOn: "true",
+        demoOff: "false",
+        fields: [
+          { key: "ALPHA_APPID", label: "App-ID", type: "text" },
+          { key: "ALPHA_APPSECRET", label: "App-Secret", type: "password" },
+          { key: "ALPHA_SN", label: "Serien-Nr. der Anlage (optional)", type: "text" },
+        ],
+      },
+      "zappi-dashboard": {
+        title: "🔌 Zappi – Zugangsdaten",
+        hint: "Deine Login-Daten vom myenergi-Portal. Ohne Eintrag laufen Beispieldaten.",
+        demoKey: "ZAPPI_MODE",
+        demoOn: "fake",
+        demoOff: "playwright",
+        fields: [
+          { key: "ZAPPI_USERNAME", label: "Benutzername", type: "text" },
+          { key: "ZAPPI_PASSWORD", label: "Passwort", type: "password" },
+          { key: "ZAPPI_LOGIN_URL", label: "Login-Adresse des Portals", type: "text" },
+          { key: "ZAPPI_SERIAL", label: "Zappi Serien-Nr. (optional)", type: "text" },
+        ],
+      },
+    };
+
+    let currentSettingsProject = null;
+
+    async function openSettings(project) {
+      const schema = SETTINGS_SCHEMA[project];
+      if (!schema) return;
+      currentSettingsProject = project;
+
+      const result = await window.api.getSettings(project);
+      const values = result.values || {};
+
+      document.getElementById("settings-title").textContent = schema.title;
+      document.getElementById("settings-hint").textContent = schema.hint;
+      const msg = document.getElementById("settings-msg");
+      msg.textContent = result.success ? "" : result.output;
+      msg.className = result.success ? "modal-msg" : "modal-msg err";
+
+      const demoActive = (values[schema.demoKey] ?? schema.demoOn) === schema.demoOn;
+
+      const container = document.getElementById("settings-fields");
+      container.replaceChildren();
+
+      const toggle = document.createElement("label");
+      toggle.className = "toggle";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = "settings-demo";
+      checkbox.checked = demoActive;
+      toggle.append(checkbox, document.createTextNode("Demo-Modus (Beispieldaten statt echter Anlage)"));
+      container.append(toggle);
+
+      for (const field of schema.fields) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "field";
+        const label = document.createElement("label");
+        label.textContent = field.label;
+        label.htmlFor = `settings-${field.key}`;
+        const input = document.createElement("input");
+        input.type = field.type;
+        input.id = `settings-${field.key}`;
+        input.value = values[field.key] || "";
+        input.autocomplete = "off";
+        wrapper.append(label, input);
+        container.append(wrapper);
+      }
+
+      document.getElementById("settings-modal").classList.add("open");
+    }
+
+    function closeSettings() {
+      document.getElementById("settings-modal").classList.remove("open");
+      currentSettingsProject = null;
+    }
+
+    async function saveSettings() {
+      const project = currentSettingsProject;
+      const schema = SETTINGS_SCHEMA[project];
+      if (!schema) return;
+
+      const demoActive = document.getElementById("settings-demo").checked;
+      const values = { [schema.demoKey]: demoActive ? schema.demoOn : schema.demoOff };
+      for (const field of schema.fields) {
+        const value = document.getElementById(`settings-${field.key}`).value.trim();
+        if (value) values[field.key] = value;
+      }
+
+      const msg = document.getElementById("settings-msg");
+      const result = await window.api.saveSettings(project, values);
+      if (result.success) {
+        msg.className = "modal-msg ok";
+        msg.textContent = "Gespeichert ✓ – beim nächsten Start wird es verwendet.";
+        setTimeout(closeSettings, 1200);
+      } else {
+        msg.className = "modal-msg err";
+        msg.textContent = result.output;
+      }
+    }
+
+    document.getElementById("settings-modal").addEventListener("click", (e) => {
+      if (e.target.id === "settings-modal") closeSettings();
+    });
+
     init();
     setInterval(refreshStatus, 5000);
-  </script>
-</body>
-</html>
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-      color: #fff;
-      min-height: 100vh;
-      padding: 40px;
-      -webkit-app-region: drag;
-    }
-
-    h1 {
-      font-size: 28px;
-      margin-bottom: 8px;
-      -webkit-app-region: drag;
-    }
-
-    .subtitle {
-      color: #8892b0;
-      margin-bottom: 40px;
-      font-size: 14px;
-    }
-
-    .docker-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 12px;
-      margin-bottom: 30px;
-    }
-
-    .docker-status.ok { background: rgba(80, 200, 120, 0.15); color: #50c878; }
-    .docker-status.error { background: rgba(255, 99, 71, 0.15); color: #ff6347; }
-
-    .dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-
-    .projects {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      -webkit-app-region: no-drag;
-    }
-
-    .card {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      padding: 28px;
-      transition: transform 0.2s, border-color 0.2s;
-    }
-
-    .card:hover {
-      transform: translateY(-2px);
-      border-color: rgba(255, 255, 255, 0.2);
-    }
-
-    .card h2 {
-      font-size: 20px;
-      margin-bottom: 8px;
-    }
-
-    .card p {
-      color: #8892b0;
-      font-size: 13px;
-      margin-bottom: 20px;
-      line-height: 1.5;
-    }
-
-    .card-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      margin-bottom: 16px;
-      padding: 4px 10px;
-      border-radius: 12px;
-    }
-
-    .card-status.running { background: rgba(80, 200, 120, 0.15); color: #50c878; }
-    .card-status.stopped { background: rgba(255, 165, 0, 0.15); color: #ffa500; }
-
-    .buttons {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    button {
-      padding: 10px 18px;
-      border: none;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: opacity 0.2s;
-    }
-
-    button:hover { opacity: 0.85; }
-    button:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    .btn-start { background: #50c878; color: #000; }
-    .btn-stop { background: #ff6347; color: #fff; }
-    .btn-open { background: rgba(255, 255, 255, 0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
-
-    .loading {
-      display: inline-block;
-      width: 14px; height: 14px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin-right: 6px;
-      vertical-align: middle;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
-</head>
-<body>
-  <h1>⚡ Energy Dashboard</h1>
-  <p class="subtitle">Deine Energie-Projekte mit einem Klick starten</p>
-  
-  <div id="docker-status" class="docker-status">
-    <span class="dot"></span>
-    <span>Docker wird geprüft...</span>
-  </div>
-
-  <div class="projects">
-    <div class="card" id="card-alphaess">
-      <h2>☀️ AlphaESS Dashboard</h2>
-      <p>Photovoltaik-Monitoring mit Batterie, Verbrauch und Einspeise-Daten. Inkl. Monatsabrechnung.</p>
-      <div class="card-status stopped" id="status-alphaess">
-        <span class="dot"></span> Gestoppt
-      </div>
-      <div class="buttons">
-        <button class="btn-start" onclick="startProject('alphaess')">▶ Starten</button>
-        <button class="btn-stop" onclick="stopProject('alphaess')" disabled>■ Stoppen</button>
-        <button class="btn-open" onclick="openDashboard('http://localhost:5173')" disabled id="open-alphaess">🌐 Öffnen</button>
-      </div>
-    </div>
-
-    <div class="card" id="card-zappi">
-      <h2>🔌 Zappi Dashboard</h2>
-      <p>Wallbox-Monitoring mit Ladedaten und monatlicher Rechnungsberechnung für myenergi Zappi.</p>
-      <div class="card-status stopped" id="status-zappi-dashboard">
-        <span class="dot"></span> Gestoppt
-      </div>
-      <div class="buttons">
-        <button class="btn-start" onclick="startProject('zappi-dashboard')">▶ Starten</button>
-        <button class="btn-stop" onclick="stopProject('zappi-dashboard')" disabled>■ Stoppen</button>
-        <button class="btn-open" onclick="openDashboard('http://localhost:5174')" disabled id="open-zappi-dashboard">🌐 Öffnen</button>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    async function init() {
-      const dockerOk = await window.api.checkDocker();
-      const el = document.getElementById("docker-status");
-      if (dockerOk) {
-        el.className = "docker-status ok";
-        el.innerHTML = '<span class="dot"></span> Docker Desktop läuft';
-        refreshStatus();
-      } else {
-        el.className = "docker-status error";
-        el.innerHTML = '<span class="dot"></span> Docker Desktop nicht gefunden – bitte starten!';
-      }
-    }
-
-    async function refreshStatus() {
-      const status = await window.api.getStatus();
-      for (const [project, state] of Object.entries(status)) {
-        updateUI(project, state === "running");
-      }
-    }
-
-    function updateUI(project, running) {
-      const statusEl = document.getElementById(`status-${project}`);
-      const card = project === "alphaess" ? document.getElementById("card-alphaess") : document.getElementById("card-zappi");
-      const buttons = card.querySelectorAll("button");
-      const openBtn = document.getElementById(`open-${project}`);
-
-      if (running) {
-        statusEl.className = "card-status running";
-        statusEl.innerHTML = '<span class="dot"></span> Läuft';
-        buttons[0].disabled = true;  // start
-        buttons[1].disabled = false; // stop
-        openBtn.disabled = false;
-      } else {
-        statusEl.className = "card-status stopped";
-        statusEl.innerHTML = '<span class="dot"></span> Gestoppt';
-        buttons[0].disabled = false; // start
-        buttons[1].disabled = true;  // stop
-        openBtn.disabled = true;
-      }
-    }
-
-    async function startProject(project) {
-      const card = project === "alphaess" ? document.getElementById("card-alphaess") : document.getElementById("card-zappi");
-      const statusEl = document.getElementById(`status-${project}`);
-      statusEl.innerHTML = '<span class="loading"></span> Wird gestartet...';
-      
-      const result = await window.api.startProject(project);
-      if (result.success) {
-        updateUI(project, true);
-      } else {
-        statusEl.innerHTML = '<span class="dot"></span> Fehler beim Starten';
-        statusEl.className = "card-status stopped";
-        console.error(result.output);
-      }
-    }
-
-    async function stopProject(project) {
-      const statusEl = document.getElementById(`status-${project}`);
-      statusEl.innerHTML = '<span class="loading"></span> Wird gestoppt...';
-      
-      await window.api.stopProject(project);
-      updateUI(project, false);
-    }
-
-    function openDashboard(url) {
-      window.api.openDashboard(url);
-    }
-
-    init();
-    setInterval(refreshStatus, 10000);
   </script>
 </body>
 </html>
