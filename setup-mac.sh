@@ -46,17 +46,22 @@ if ! command -v node &> /dev/null; then
   brew install node
 fi
 
-# pnpm
+# pnpm – NICHT ueber Homebrew: auf aelteren macOS-Versionen gibt es keine
+# fertigen Pakete mehr, dann werden node und cmake stundenlang aus dem
+# Quellcode uebersetzt. corepack liegt Node bereits bei.
 if ! command -v pnpm &> /dev/null; then
   echo "📦 Installiere pnpm..."
-  brew install pnpm
+  if command -v corepack &> /dev/null; then
+    corepack enable pnpm 2>/dev/null || true
+    corepack prepare pnpm@latest --activate 2>/dev/null || true
+  fi
+  if ! command -v pnpm &> /dev/null; then
+    npm install -g pnpm
+  fi
 fi
 
-# Python
-if ! command -v python3 &> /dev/null; then
-  echo "📦 Installiere Python..."
-  brew install python@3.12
-fi
+# Python wird nicht separat installiert – uv bringt bei Bedarf eine eigene
+# Version mit (schneller als ein Quellcode-Build via Homebrew).
 
 # uv (Python package manager)
 if ! command -v uv &> /dev/null; then
